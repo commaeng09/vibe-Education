@@ -34,7 +34,9 @@ export default function HomePage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (demo) {
-      handleDemoLogin("student");
+      setError(
+        "데모 모드에서는 이메일·비밀번호로 로그인할 수 없습니다. 위쪽 「학생으로 로그인」 또는 「교강사로 로그인」 버튼을 사용하세요. 실제 로그인은 .env.local과 Vercel에 Supabase URL/키를 넣은 뒤 이용할 수 있습니다."
+      );
       return;
     }
     setLoading(true);
@@ -57,7 +59,9 @@ export default function HomePage() {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (demo) {
-      handleDemoLogin(role);
+      setError(
+        "데모 모드에서는 회원가입 대신 위쪽 빠른 로그인 버튼을 사용하세요. 실제 회원가입은 Supabase를 연결한 뒤 가능합니다."
+      );
       return;
     }
     setLoading(true);
@@ -218,6 +222,11 @@ export default function HomePage() {
               onSubmit={mode === "login" ? handleLogin : handleSignup}
               className="space-y-4"
             >
+              {demo && (
+                <p className="text-xs text-muted bg-secondary/80 p-3 rounded-lg">
+                  데모 모드에서는 아래 입력란이 비활성화됩니다. 실제 계정은 Supabase 연결 후 사용하세요.
+                </p>
+              )}
               {mode === "signup" && (
                 <>
                   <div className="relative">
@@ -228,6 +237,7 @@ export default function HomePage() {
                       onChange={(e) => setName(e.target.value)}
                       className="pl-10"
                       required={!demo}
+                      disabled={demo}
                     />
                   </div>
                   <div>
@@ -236,22 +246,24 @@ export default function HomePage() {
                       <button
                         type="button"
                         onClick={() => setRole("student")}
+                        disabled={demo}
                         className={`flex-1 py-2.5 text-sm font-medium rounded-lg border transition-colors cursor-pointer ${
                           role === "student"
                             ? "border-primary bg-primary/5 text-primary"
                             : "border-border text-muted hover:border-primary/30"
-                        }`}
+                        } ${demo ? "opacity-50 cursor-not-allowed" : ""}`}
                       >
                         🎓 학생
                       </button>
                       <button
                         type="button"
                         onClick={() => setRole("instructor")}
+                        disabled={demo}
                         className={`flex-1 py-2.5 text-sm font-medium rounded-lg border transition-colors cursor-pointer ${
                           role === "instructor"
                             ? "border-primary bg-primary/5 text-primary"
                             : "border-border text-muted hover:border-primary/30"
-                        }`}
+                        } ${demo ? "opacity-50 cursor-not-allowed" : ""}`}
                       >
                         👨‍🏫 교강사
                       </button>
@@ -269,6 +281,7 @@ export default function HomePage() {
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10"
                   required={!demo}
+                  disabled={demo}
                 />
               </div>
 
@@ -282,6 +295,7 @@ export default function HomePage() {
                   className="pl-10"
                   required={!demo}
                   minLength={6}
+                  disabled={demo}
                 />
               </div>
 
@@ -291,7 +305,13 @@ export default function HomePage() {
                 </p>
               )}
 
-              <Button type="submit" className="w-full" size="lg" loading={loading}>
+              <Button
+                type="submit"
+                className="w-full"
+                size="lg"
+                loading={loading}
+                disabled={demo}
+              >
                 {mode === "login" ? "로그인" : "회원가입"}
               </Button>
             </form>
