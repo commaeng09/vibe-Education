@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
-import { openai, ANALYSIS_SYSTEM_PROMPT } from "@/lib/openai";
+import { getOpenAI, ANALYSIS_SYSTEM_PROMPT } from "@/lib/openai";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -57,7 +57,7 @@ ${code}
 
 위 정보를 바탕으로 학생의 코드를 분석해주세요.`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: ANALYSIS_SYSTEM_PROMPT },

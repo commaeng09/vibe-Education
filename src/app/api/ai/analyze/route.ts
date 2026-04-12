@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
-import { openai, INSIGHT_SYSTEM_PROMPT } from "@/lib/openai";
+import { getOpenAI, INSIGHT_SYSTEM_PROMPT } from "@/lib/openai";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       feedback: a.feedback,
     }));
 
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: INSIGHT_SYSTEM_PROMPT },

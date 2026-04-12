@@ -1,8 +1,18 @@
 import OpenAI from "openai";
 
-export const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let client: OpenAI | null = null;
+
+/** 빌드 시에는 API 키가 없을 수 있으므로, 호출 시점에만 클라이언트를 생성합니다. */
+export function getOpenAI(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY가 설정되지 않았습니다.");
+  }
+  if (!client) {
+    client = new OpenAI({ apiKey });
+  }
+  return client;
+}
 
 export const ANALYSIS_SYSTEM_PROMPT = `당신은 코딩 교육 전문가입니다.
 학생의 코드를 분석하여 문법 오류, 논리 오류, 사고 방식 문제를 파악하세요.

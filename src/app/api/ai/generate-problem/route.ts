@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
-import { openai, PROBLEM_GENERATION_PROMPT } from "@/lib/openai";
+import { getOpenAI, PROBLEM_GENERATION_PROMPT } from "@/lib/openai";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const { topic, difficulty } = body;
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: PROBLEM_GENERATION_PROMPT },
