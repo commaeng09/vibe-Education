@@ -49,22 +49,39 @@ export default function CreateProblemPage() {
       const response = await fetch("/api/ai/generate-problem", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ topic: aiTopic, difficulty }),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as {
+        problem?: {
+          title: string;
+          description: string;
+          difficulty: string;
+          solution_code: string;
+          test_cases?: { input: string; expected_output: string }[];
+        };
+        error?: string;
+      };
+
+      if (!response.ok) {
+        alert(data.error || `요청 실패 (${response.status})`);
+        return;
+      }
 
       if (data.problem) {
         setTitle(data.problem.title);
         setDescription(data.problem.description);
         setDifficulty(data.problem.difficulty);
         setSolutionCode(data.problem.solution_code);
-        if (data.problem.test_cases?.length > 0) {
+        if (data.problem.test_cases?.length) {
           setTestCases(data.problem.test_cases);
         }
+      } else {
+        alert(data.error || "문제 데이터를 받지 못했습니다.");
       }
     } catch {
-      alert("AI 문제 생성에 실패했습니다.");
+      alert("네트워크 오류로 AI 생성에 실패했습니다.");
     } finally {
       setGenerating(false);
     }
