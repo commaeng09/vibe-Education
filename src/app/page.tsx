@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { useRouter } from "next/navigation";
 import { Code2, GraduationCap, Brain, BarChart3, Mail, Lock, User, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,103 @@ function isDemo() {
   return !url || url.includes("placeholder");
 }
 
+/** 내부 테스트용 고정 비밀번호 로그인 (NEXT_PUBLIC_ENABLE_TEST_LOGIN=true 일 때만 UI 표시) */
+const TEST_LOGIN_PASSWORD = "qwer1234";
+
+function isTestQuickLoginEnabled() {
+  return process.env.NEXT_PUBLIC_ENABLE_TEST_LOGIN === "true";
+}
+
+function getTestLoginEmails() {
+  return {
+    student: normalizeAuthEmail(
+      process.env.NEXT_PUBLIC_TEST_STUDENT_EMAIL ||
+        "student-test@vibe-education.app"
+    ),
+    instructor: normalizeAuthEmail(
+      process.env.NEXT_PUBLIC_TEST_INSTRUCTOR_EMAIL ||
+        "instructor-test@vibe-education.app"
+    ),
+  };
+}
+
+/** 브라우저 type="email" 은 .local 등 일부 주소를 거부하므로, 텍스트 입력 후 여기서만 검사 */
+function isPlausibleEmail(value: string) {
+  const t = value.trim();
+  if (!t.includes("@")) return false;
+  const [local, ...rest] = t.split("@");
+  const domain = rest.join("@");
+  return local.length > 0 && domain.length > 0 && domain.includes(".");
+}
+
+/** Supabase Auth는 이메일을 소문자로 다루는 경우가 많아 로그인/가입 시 통일 */
+function normalizeAuthEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+/** Supabase가 주는 영문 메시지 + 자주 겪는 경우 한국어 안내 */
+function formatSignInError(err: {
+  message: string;
+  status?: number;
+  code?: string;
+}): string {
+  const raw = err.message.trim();
+  const lower = raw.toLowerCase();
+  const code = (err.code || "").toLowerCase();
+
+  // 콘솔의 429 Too Many Requests — Auth·이메일 등 짧은 시간 다중 요청 한도
+  if (
+    err.status === 429 ||
+    code === "too_many_requests" ||
+    lower.includes("too many requests") ||
+    lower.includes("rate limit")
+  ) {
+    return `${raw}
+
+• Supabase는 짧은 시간에 로그인 시도가 많으면 429를 반환합니다. 몇 분 쉬었다가 다시 시도하세요.
+• 로그인 버튼 연타·자동 새로고침 확장 프로그램이 반복 요청을 만들지 않는지 확인하세요.`;
+  }
+
+  if (
+    lower.includes("invalid login") ||
+    lower.includes("invalid credentials") ||
+    code === "invalid_credentials"
+  ) {
+    return `${raw}
+
+• Supabase Dashboard → Authentication → Users에 위 이메일 계정이 있는지 확인하세요. 없으면 Add user로 같은 이메일·비밀번호를 지정해 만드세요.
+• 비밀번호가 계정에 설정한 값과 일치하는지 확인하세요(테스트 계정은 보통 qwer1234).`;
+  }
+  if (lower.includes("email not confirmed") || lower.includes("not confirmed")) {
+    return `${raw}
+
+• Authentication → Providers → Email에서「Confirm email」을 끄거나, 가입 확인 메일의 링크로 인증한 뒤 다시 로그인하세요.`;
+  }
+
+  if (
+    code === "captcha_failed" ||
+    lower.includes("captcha") ||
+    lower.includes("hcaptcha") ||
+    lower.includes("turnstile")
+  ) {
+    return `${raw}
+
+• Supabase에서 CAPTCHA(봇 방지)를 켠 경우, 로그인 요청에 캡차 토큰이 없으면 400이 납니다.
+• 해결: Dashboard → Authentication → Bot and Abuse Protection에서 CAPTCHA를 끄거나, Cloudflare Turnstile 사이트 키를 NEXT_PUBLIC_TURNSTILE_SITE_KEY로 넣고 아래 캡차를 표시하세요. (문서: https://supabase.com/docs/guides/auth/auth-captcha)`;
+  }
+
+  // 콘솔의 400 on .../token?grant_type=password — 잘못된 자격 증명·캡차·정책
+  if (err.status === 400) {
+    return `${raw}
+
+• 이메일·비밀번호가 틀렸거나, Users에 해당 계정이 없을 때 자주 납니다.
+• Authentication에서 CAPTCHA를 켰다면 위와 같이 토큰이 필요합니다.
+• Vercel의 NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY가 해당 Supabase 프로젝트와 같은지 확인하세요.`;
+  }
+
+  return raw;
+}
+
 export default function HomePage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
@@ -23,6 +121,58 @@ export default function HomePage() {
   const [error, setError] = useState("");
   const router = useRouter();
   const demo = isDemo();
+  const testQuickLogin = isTestQuickLoginEnabled() && !demo;
+  const testEmails = getTestLoginEmails();
+
+  /** Supabase CAPTCHA 사용 시: Cloudflare Turnstile 사이트 키 (Dashboard의 CAPTCHA와 같은 Turnstile 위젯) */
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileInstance>(null);
+
+  const resetTurnstile = useCallback(() => {
+    turnstileRef.current?.reset();
+    setCaptchaToken(null);
+  }, []);
+
+  const onTurnstileSuccess = useCallback((token: string) => {
+    setCaptchaToken(token);
+  }, []);
+
+  const handleTestQuickLogin = async (kind: "student" | "instructor") => {
+    setLoading(true);
+    setError("");
+    if (turnstileSiteKey && !captchaToken) {
+      setError("아래 인증(캡차)을 완료한 뒤 다시 시도해 주세요.");
+      setLoading(false);
+      return;
+    }
+    try {
+      const { createClient } = await import("@/lib/supabase-browser");
+      const supabase = createClient();
+      const email =
+        kind === "student" ? testEmails.student : testEmails.instructor;
+      const { error: signError } = await supabase.auth.signInWithPassword({
+        email,
+        password: TEST_LOGIN_PASSWORD,
+        options:
+          turnstileSiteKey && captchaToken
+            ? { captchaToken }
+            : undefined,
+      });
+      if (signError) {
+        setError(formatSignInError(signError));
+        if (turnstileSiteKey) resetTurnstile();
+        setLoading(false);
+        return;
+      }
+      router.push("/dashboard");
+      router.refresh();
+    } catch {
+      setError("테스트 로그인 요청에 실패했습니다.");
+      if (turnstileSiteKey) resetTurnstile();
+      setLoading(false);
+    }
+  };
 
   const handleDemoLogin = (demoRole: "student" | "instructor") => {
     setLoading(true);
@@ -42,12 +192,34 @@ export default function HomePage() {
     setLoading(true);
     setError("");
 
+    const emailTrim = email.trim();
+    if (!isPlausibleEmail(emailTrim)) {
+      setError("이메일은 example@domain.com 형식으로 입력해 주세요.");
+      setLoading(false);
+      return;
+    }
+    const emailNorm = normalizeAuthEmail(emailTrim);
+
+    if (turnstileSiteKey && !captchaToken) {
+      setError("아래 인증(캡차)을 완료한 뒤 다시 시도해 주세요.");
+      setLoading(false);
+      return;
+    }
+
     const { createClient } = await import("@/lib/supabase-browser");
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({
+      email: emailNorm,
+      password,
+      options:
+        turnstileSiteKey && captchaToken
+          ? { captchaToken }
+          : undefined,
+    });
 
     if (error) {
-      setError("로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.");
+      setError(formatSignInError(error));
+      if (turnstileSiteKey) resetTurnstile();
       setLoading(false);
       return;
     }
@@ -67,21 +239,39 @@ export default function HomePage() {
     setLoading(true);
     setError("");
 
+    const emailTrim = email.trim();
+    if (!isPlausibleEmail(emailTrim)) {
+      setError("이메일은 example@domain.com 형식으로 입력해 주세요.");
+      setLoading(false);
+      return;
+    }
+    const emailNorm = normalizeAuthEmail(emailTrim);
+
+    if (turnstileSiteKey && !captchaToken) {
+      setError("아래 인증(캡차)을 완료한 뒤 다시 시도해 주세요.");
+      setLoading(false);
+      return;
+    }
+
     const { createClient } = await import("@/lib/supabase-browser");
     const supabase = createClient();
     const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
+      email: emailNorm,
       password,
       options: {
         data: {
           name,
           role,
         },
+        ...(turnstileSiteKey && captchaToken
+          ? { captchaToken }
+          : {}),
       },
     });
 
     if (authError) {
-      setError(authError.message);
+      setError(formatSignInError(authError));
+      if (turnstileSiteKey) resetTurnstile();
       setLoading(false);
       return;
     }
@@ -103,7 +293,7 @@ export default function HomePage() {
     const { error: profileError } = await supabase.from("users").upsert(
       {
         id: authData.user.id,
-        email,
+        email: emailNorm,
         name,
         role,
       },
@@ -217,6 +407,45 @@ export default function HomePage() {
             </Card>
           )}
 
+          {testQuickLogin && (
+            <Card className="p-6 mb-4 border-amber-200 bg-amber-50/90">
+              <h3 className="font-semibold text-sm text-amber-900 mb-1">
+                내부 테스트 로그인 (비공개)
+              </h3>
+              <p className="text-xs text-amber-800 mb-3">
+                이메일 인증 없이 고정 비밀번호로 들어갑니다. NEXT_PUBLIC_ENABLE_TEST_LOGIN=true
+                일 때만 보입니다. Supabase에 아래 이메일 계정을 만들고 비밀번호를{" "}
+                <span className="font-mono">{TEST_LOGIN_PASSWORD}</span> 로 맞춰
+                두세요.
+              </p>
+              <p className="text-[11px] text-amber-700 mb-3 font-mono break-all">
+                학생: {testEmails.student}
+                <br />
+                교강사: {testEmails.instructor}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="flex-1 border-amber-300"
+                  onClick={() => handleTestQuickLogin("student")}
+                  loading={loading}
+                >
+                  테스트 학생 로그인
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="flex-1 border-amber-300"
+                  onClick={() => handleTestQuickLogin("instructor")}
+                  loading={loading}
+                >
+                  테스트 교강사 로그인
+                </Button>
+              </div>
+            </Card>
+          )}
+
           <Card className="p-8">
             <div className="flex gap-2 mb-6">
               <button
@@ -298,8 +527,10 @@ export default function HomePage() {
               <div className="relative">
                 <Mail className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
                 <Input
-                  type="email"
-                  placeholder="이메일"
+                  type="text"
+                  inputMode="email"
+                  autoComplete="email"
+                  placeholder="이메일 (예: name@example.com)"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10"
@@ -322,10 +553,56 @@ export default function HomePage() {
                 />
               </div>
 
+              {!demo && turnstileSiteKey && (
+                <div className="flex flex-col items-center gap-1">
+                  <p className="text-xs text-muted-foreground text-center">
+                    Supabase에서 CAPTCHA를 켠 경우 필요합니다. 키는 .env의
+                    NEXT_PUBLIC_TURNSTILE_SITE_KEY
+                  </p>
+                  <Turnstile
+                    ref={turnstileRef}
+                    siteKey={turnstileSiteKey}
+                    onSuccess={onTurnstileSuccess}
+                    onExpire={resetTurnstile}
+                    options={{ language: "ko" }}
+                  />
+                </div>
+              )}
+
               {error && (
-                <p className="text-sm text-danger bg-red-50 p-3 rounded-lg">
+                <p className="text-sm text-danger bg-red-50 p-3 rounded-lg whitespace-pre-wrap break-words">
                   {error}
                 </p>
+              )}
+
+              {!demo && (
+                <details className="text-xs text-muted-foreground border border-border rounded-lg p-3 bg-secondary/40">
+                  <summary className="cursor-pointer font-medium text-foreground">
+                    student-test@vibe-education.app 로 로그인이 안 될 때
+                  </summary>
+                  <ol className="mt-2 list-decimal list-inside space-y-1.5 pl-1">
+                    <li>
+                      이 주소는 <strong>앱에만 적힌 예시</strong>입니다. Supabase{" "}
+                      <strong>Authentication → Users</strong> 목록에{" "}
+                      <span className="font-mono">student-test@vibe-education.app</span>{" "}
+                      사용자가 <strong>실제로 있어야</strong> 로그인됩니다.
+                    </li>
+                    <li>
+                      없으면 <strong>Add user</strong>로 같은 이메일을 넣고 비밀번호(예:{" "}
+                      <span className="font-mono">qwer1234</span>)를 지정해 만듭니다.
+                    </li>
+                    <li>
+                      <strong>Providers → Email → Confirm email</strong>이 켜져 있으면
+                      인증 메일을 확인하거나, 개발 중에는 끄고 다시 시도합니다.
+                    </li>
+                    <li>
+                      Vercel(또는 로컬)의{" "}
+                      <span className="font-mono">NEXT_PUBLIC_SUPABASE_URL</span> /{" "}
+                      <span className="font-mono">ANON_KEY</span>가 그 Users가 있는
+                      Supabase 프로젝트와 같은지 확인합니다.
+                    </li>
+                  </ol>
+                </details>
               )}
 
               <Button

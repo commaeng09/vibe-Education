@@ -26,6 +26,7 @@ export default function ProblemDetailPage() {
   const [explanation, setExplanation] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [submitErrorDetail, setSubmitErrorDetail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -56,11 +57,13 @@ export default function ProblemDetailPage() {
     if (!problem) return;
     setSubmitting(true);
     setResult(null);
+    setSubmitErrorDetail(null);
 
     if (demo) {
       await new Promise((r) => setTimeout(r, 1500));
       const demoSubId = "demo-sub-002";
       setResult("success");
+      setSubmitting(false);
       router.push(`/analysis/${demoSubId}`);
       return;
     }
@@ -76,15 +79,39 @@ export default function ProblemDetailPage() {
         }),
       });
 
-      const data = await response.json();
+      let data: {
+        submission?: { id: string };
+        analysis?: unknown;
+        error?: string;
+      } = {};
+      try {
+        data = await response.json();
+      } catch {
+        setSubmitErrorDetail("서버 응답을 읽을 수 없습니다.");
+        setResult("error");
+        return;
+      }
 
-      if (data.submission && data.analysis) {
+      if (!response.ok) {
+        setSubmitErrorDetail(
+          typeof data.error === "string" ? data.error : `오류 (${response.status})`
+        );
+        setResult("error");
+        return;
+      }
+
+      if (data.submission?.id) {
         setResult("success");
         router.push(`/analysis/${data.submission.id}`);
-      } else {
-        setResult("error");
+        return;
       }
+
+      setSubmitErrorDetail(
+        typeof data.error === "string" ? data.error : "제출 응답에 submission이 없습니다."
+      );
+      setResult("error");
     } catch {
+      setSubmitErrorDetail("네트워크 오류가 발생했습니다.");
       setResult("error");
     } finally {
       setSubmitting(false);
@@ -191,8 +218,13 @@ export default function ProblemDetailPage() {
           </div>
 
           {result === "error" && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-              제출에 실패했습니다. 다시 시도해주세요.
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm whitespace-pre-wrap">
+              <p className="font-medium">제출에 실패했습니다.</p>
+              {submitErrorDetail ? (
+                <p className="mt-2 text-red-800/90">{submitErrorDetail}</p>
+              ) : (
+                <p className="mt-2">다시 시도해 주세요.</p>
+              )}
             </div>
           )}
         </div>
