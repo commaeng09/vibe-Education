@@ -95,7 +95,7 @@ export default function HomePage() {
     if (!authData.session) {
       setLoading(false);
       setError(
-        "가입 확인 메일을 보냈습니다. 메일함에서 링크를 눌러 인증한 뒤 로그인해주세요. (프로필 자동 생성은 Supabase SQL 폴더의 trigger-handle-new-user.sql 을 실행해 주세요.)"
+        "가입 확인 메일을 보냈습니다. 메일함에서 링크를 눌러 인증한 뒤, 아래 로그인에서 같은 이메일로 로그인해주세요."
       );
       return;
     }
