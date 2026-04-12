@@ -29,10 +29,13 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isAuthPage = request.nextUrl.pathname === "/";
-  const isCallbackPage = request.nextUrl.pathname.startsWith("/auth/callback");
+  const path = request.nextUrl.pathname;
+  const isAuthPage = path === "/";
+  const isCallbackPage = path.startsWith("/auth/callback");
+  /** API는 JSON으로 401을 내려야 하며, HTML 리다이렉트면 fetch().json()이 깨집니다. */
+  const isApiRoute = path.startsWith("/api/");
 
-  if (!user && !isAuthPage && !isCallbackPage) {
+  if (!user && !isAuthPage && !isCallbackPage && !isApiRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);

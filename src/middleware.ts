@@ -8,9 +8,11 @@ function isDemo() {
 export async function middleware(request: NextRequest) {
   if (isDemo()) {
     const demoUser = request.cookies.get("demo-user")?.value;
-    const isAuthPage = request.nextUrl.pathname === "/";
+    const path = request.nextUrl.pathname;
+    const isAuthPage = path === "/";
+    const isApiRoute = path.startsWith("/api/");
 
-    if (!demoUser && !isAuthPage) {
+    if (!demoUser && !isAuthPage && !isApiRoute) {
       const url = request.nextUrl.clone();
       url.pathname = "/";
       return NextResponse.redirect(url);

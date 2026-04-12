@@ -46,14 +46,18 @@ export default function CreateProblemPage() {
     setGenerating(true);
 
     try {
-      const response = await fetch("/api/ai/generate-problem", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ topic: aiTopic, difficulty }),
-      });
+      const response = await fetch(
+        `${typeof window !== "undefined" ? window.location.origin : ""}/api/ai/generate-problem`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ topic: aiTopic, difficulty }),
+        }
+      );
 
-      const data = (await response.json()) as {
+      const raw = await response.text();
+      let data: {
         problem?: {
           title: string;
           description: string;
@@ -62,7 +66,16 @@ export default function CreateProblemPage() {
           test_cases?: { input: string; expected_output: string }[];
         };
         error?: string;
-      };
+      } = {};
+
+      try {
+        data = raw ? (JSON.parse(raw) as typeof data) : {};
+      } catch {
+        alert(
+          `서버 응답을 해석할 수 없습니다 (HTTP ${response.status}). 로그인이 풀렸다면 다시 로그인 후 시도하세요.`
+        );
+        return;
+      }
 
       if (!response.ok) {
         alert(data.error || `요청 실패 (${response.status})`);
@@ -80,8 +93,9 @@ export default function CreateProblemPage() {
       } else {
         alert(data.error || "문제 데이터를 받지 못했습니다.");
       }
-    } catch {
-      alert("네트워크 오류로 AI 생성에 실패했습니다.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "알 수 없는 오류";
+      alert(`요청 중 오류: ${msg}`);
     } finally {
       setGenerating(false);
     }
