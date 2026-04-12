@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Editor from "@monaco-editor/react";
 
 interface CodeEditorProps {
@@ -20,6 +20,19 @@ export function CodeEditor({
 }: CodeEditorProps) {
   const [mounted, setMounted] = useState(false);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const loadingView = (
+    <div
+      className="flex items-center justify-center bg-gray-900 text-gray-400 text-sm"
+      style={{ height }}
+    >
+      에디터 로딩 중...
+    </div>
+  );
+
   return (
     <div className="rounded-lg overflow-hidden border border-border">
       <div className="bg-gray-900 px-4 py-2 flex items-center justify-between">
@@ -30,35 +43,29 @@ export function CodeEditor({
         </div>
         <span className="text-xs text-gray-400 font-mono">{language}</span>
       </div>
-      <Editor
-        height={height}
-        defaultLanguage={language}
-        value={value}
-        onChange={(val) => onChange(val || "")}
-        onMount={() => setMounted(true)}
-        theme="vs-dark"
-        loading={
-          <div className="flex items-center justify-center h-full bg-gray-900 text-gray-400">
-            에디터 로딩 중...
-          </div>
-        }
-        options={{
-          readOnly,
-          minimap: { enabled: false },
-          fontSize: 14,
-          lineNumbers: "on",
-          scrollBeyondLastLine: false,
-          wordWrap: "on",
-          tabSize: 4,
-          automaticLayout: true,
-          padding: { top: 16 },
-          fontFamily: "var(--font-geist-mono), monospace",
-        }}
-      />
-      {!mounted && (
-        <div className="h-[400px] bg-gray-900 flex items-center justify-center text-gray-400">
-          에디터를 불러오는 중...
-        </div>
+      {!mounted ? (
+        loadingView
+      ) : (
+        <Editor
+          height={height}
+          defaultLanguage={language}
+          value={value}
+          onChange={(val) => onChange(val || "")}
+          theme="vs-dark"
+          loading={loadingView}
+          options={{
+            readOnly,
+            minimap: { enabled: false },
+            fontSize: 14,
+            lineNumbers: "on",
+            scrollBeyondLastLine: false,
+            wordWrap: "on",
+            tabSize: 4,
+            automaticLayout: true,
+            padding: { top: 16 },
+            fontFamily: "var(--font-geist-mono), monospace",
+          }}
+        />
       )}
     </div>
   );

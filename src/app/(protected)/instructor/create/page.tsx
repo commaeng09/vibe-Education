@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase-browser";
 import { Sparkles, Save, Plus, X, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select } from "@/components/ui/input";
@@ -17,7 +16,6 @@ interface TestCase {
 
 export default function CreateProblemPage() {
   const router = useRouter();
-  const supabase = createClient();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [difficulty, setDifficulty] = useState<string>("easy");
@@ -78,6 +76,18 @@ export default function CreateProblemPage() {
       return;
     }
     setSaving(true);
+
+    let supabase;
+    try {
+      const { createClient } = await import("@/lib/supabase-browser");
+      supabase = createClient();
+    } catch {
+      alert(
+        "Supabase 연결 설정을 확인하세요. (.env.local 또는 Vercel의 NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY)"
+      );
+      setSaving(false);
+      return;
+    }
 
     const {
       data: { user },
