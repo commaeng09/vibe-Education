@@ -72,6 +72,12 @@ export default function HomePage() {
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: {
+          name,
+          role,
+        },
+      },
     });
 
     if (authError) {
@@ -80,19 +86,36 @@ export default function HomePage() {
       return;
     }
 
-    if (authData.user) {
-      const { error: profileError } = await supabase.from("users").insert({
+    if (!authData.user) {
+      setLoading(false);
+      return;
+    }
+
+    // 이메일 인증을 켜 두면 가입 직후 세션이 없음 → RLS로 public.users insert 불가
+    if (!authData.session) {
+      setLoading(false);
+      setError(
+        "가입 확인 메일을 보냈습니다. 메일함에서 링크를 눌러 인증한 뒤 로그인해주세요. (프로필 자동 생성은 Supabase SQL 폴더의 trigger-handle-new-user.sql 을 실행해 주세요.)"
+      );
+      return;
+    }
+
+    const { error: profileError } = await supabase.from("users").upsert(
+      {
         id: authData.user.id,
         email,
         name,
         role,
-      });
+      },
+      { onConflict: "id" }
+    );
 
-      if (profileError) {
-        setError("프로필 생성에 실패했습니다.");
-        setLoading(false);
-        return;
-      }
+    if (profileError) {
+      setError(
+        `프로필 저장 실패: ${profileError.message}`
+      );
+      setLoading(false);
+      return;
     }
 
     router.push("/dashboard");
