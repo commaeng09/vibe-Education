@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
+import { ensurePublicUserProfile } from "@/lib/ensure-public-user";
 import { getOpenAI, ANALYSIS_SYSTEM_PROMPT } from "@/lib/openai";
 
 export const runtime = "nodejs";
@@ -27,6 +28,11 @@ export async function POST(request: Request) {
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const ensured = await ensurePublicUserProfile(supabase, user);
+    if (!ensured.ok) {
+      return NextResponse.json({ error: ensured.message }, { status: 500 });
     }
 
     let body: { problem_id?: string; code?: string; explanation?: string };
@@ -70,16 +76,10 @@ export async function POST(request: Request) {
       .single();
 
     if (subError) {
-      let msg = subError.message;
-      if (
-        subError.code === "23503" ||
-        msg.toLowerCase().includes("foreign key") ||
-        msg.includes("users")
-      ) {
-        msg =
-          "계정 프로필(public.users)이 없어 제출할 수 없습니다. 회원가입·트리거를 확인하거나 로그아웃 후 다시 로그인해 보세요.";
-      }
-      return NextResponse.json({ error: msg, code: subError.code }, { status: 500 });
+      return NextResponse.json(
+        { error: subError.message, code: subError.code },
+        { status: 500 }
+      );
     }
 
     try {
