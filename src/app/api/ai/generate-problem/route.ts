@@ -1,8 +1,12 @@
+import {
+  APIError,
+  AuthenticationError,
+  RateLimitError,
+} from "openai";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
 import { getOpenAI, PROBLEM_GENERATION_PROMPT } from "@/lib/openai";
 
-/** Edge가 아닌 Node에서 실행해 process.env를 안정적으로 읽습니다. */
 export const runtime = "nodejs";
 
 function parseJsonObject(raw: string): Record<string, unknown> {
@@ -18,45 +22,68 @@ function parseJsonObject(raw: string): Record<string, unknown> {
   }
 }
 
+function openAiErrorMessage(err: unknown): string {
+  if (err instanceof AuthenticationError) {
+    return "OpenAI API 키가 잘못되었거나 만료되었습니다. Vercel의 OPENAI_API_KEY를 다시 확인하세요.";
+  }
+  if (err instanceof RateLimitError) {
+    return "OpenAI 요청 한도에 걸렸습니다. 잠시 후 다시 시도하세요.";
+  }
+  if (err instanceof APIError) {
+    const code = (err as APIError & { code?: string }).code;
+    if (code === "insufficient_quota") {
+      return "OpenAI 계정에 사용 가능한 크레딧이 없습니다. 결제·한도를 확인하세요.";
+    }
+    if (err.status === 400) {
+      return `OpenAI 요청 형식 오류: ${err.message}`;
+    }
+    return err.message || "OpenAI API 요청에 실패했습니다.";
+  }
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return "알 수 없는 오류가 발생했습니다.";
+}
+
 export async function POST(request: Request) {
-  if (!process.env.OPENAI_API_KEY?.trim()) {
-    return NextResponse.json(
-      {
-        error:
-          "서버에서 OPENAI_API_KEY를 읽지 못했습니다. Vercel → Settings → Environment Variables에 OPENAI_API_KEY를 추가하고 Environment에 Production을 체크한 뒤 Redeploy 하세요. (.env.local은 배포에 포함되지 않습니다.) 로그인 후 /api/debug/openai-env 에서 인식 여부를 확인할 수 있습니다.",
-      },
-      { status: 503 }
-    );
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json(
-      {
-        error:
-          "로그인 세션이 없습니다. 이메일로 로그인한 뒤 다시 시도하세요. (데모 빠른 로그인만 한 상태에서는 AI API를 호출할 수 없습니다.)",
-      },
-      { status: 401 }
-    );
-  }
-
-  let body: { topic?: string; difficulty?: string };
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "잘못된 요청 본문입니다." }, { status: 400 });
-  }
+    if (!process.env.OPENAI_API_KEY?.trim()) {
+      return NextResponse.json(
+        {
+          error:
+            "서버에서 OPENAI_API_KEY를 읽지 못했습니다. Vercel → Settings → Environment Variables에 OPENAI_API_KEY를 추가하고 Environment에 Production을 체크한 뒤 Redeploy 하세요. (.env.local은 배포에 포함되지 않습니다.) 로그인 후 /api/debug/openai-env 에서 인식 여부를 확인할 수 있습니다.",
+        },
+        { status: 503 }
+      );
+    }
 
-  const { topic, difficulty } = body;
-  if (!topic || typeof topic !== "string" || !topic.trim()) {
-    return NextResponse.json({ error: "주제(topic)를 입력하세요." }, { status: 400 });
-  }
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  try {
+    if (!user) {
+      return NextResponse.json(
+        {
+          error:
+            "로그인 세션이 없습니다. 이메일로 로그인한 뒤 다시 시도하세요. (데모 빠른 로그인만 한 상태에서는 AI API를 호출할 수 없습니다.)",
+        },
+        { status: 401 }
+      );
+    }
+
+    let body: { topic?: string; difficulty?: string };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "잘못된 요청 본문입니다." }, { status: 400 });
+    }
+
+    const { topic, difficulty } = body;
+    if (!topic || typeof topic !== "string" || !topic.trim()) {
+      return NextResponse.json({ error: "주제(topic)를 입력하세요." }, { status: 400 });
+    }
+
     const completion = await getOpenAI().chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
@@ -119,15 +146,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ problem });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const isDev = process.env.NODE_ENV === "development";
-    return NextResponse.json(
-      {
-        error: isDev
-          ? msg
-          : "AI 문제 생성에 실패했습니다. API 키·크레딧·네트워크를 확인하세요.",
-      },
-      { status: 500 }
-    );
+    console.error("[api/ai/generate-problem]", err);
+    const message = openAiErrorMessage(err);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
