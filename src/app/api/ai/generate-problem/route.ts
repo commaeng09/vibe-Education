@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
 import { getOpenAI, PROBLEM_GENERATION_PROMPT } from "@/lib/openai";
 
+/** Edge가 아닌 Node에서 실행해 process.env를 안정적으로 읽습니다. */
+export const runtime = "nodejs";
+
 function parseJsonObject(raw: string): Record<string, unknown> {
   const trimmed = raw.trim();
   try {
@@ -20,7 +23,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "OPENAI_API_KEY가 설정되지 않았습니다. Vercel(또는 로컬 .env.local)에 API 키를 추가한 뒤 다시 배포하세요.",
+          "서버에서 OPENAI_API_KEY를 읽지 못했습니다. Vercel → Settings → Environment Variables에 OPENAI_API_KEY를 추가하고 Environment에 Production을 체크한 뒤 Redeploy 하세요. (.env.local은 배포에 포함되지 않습니다.) 로그인 후 /api/debug/openai-env 에서 인식 여부를 확인할 수 있습니다.",
       },
       { status: 503 }
     );
