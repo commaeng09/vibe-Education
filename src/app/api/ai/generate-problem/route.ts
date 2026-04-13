@@ -9,6 +9,18 @@ import { getOpenAI, PROBLEM_GENERATION_PROMPT } from "@/lib/openai";
 
 export const runtime = "nodejs";
 
+const LANGUAGE_LABEL: Record<string, string> = {
+  python: "Python",
+  javascript: "JavaScript",
+  typescript: "TypeScript",
+  java: "Java",
+  c: "C",
+  cpp: "C++",
+  php: "PHP",
+  html_css: "HTML/CSS",
+  react: "React",
+};
+
 function parseJsonObject(raw: string): Record<string, unknown> {
   const trimmed = raw.trim();
   try {
@@ -72,7 +84,7 @@ export async function POST(request: Request) {
       );
     }
 
-    let body: { topic?: string; difficulty?: string };
+    let body: { topic?: string; difficulty?: string; language?: string };
     try {
       body = await request.json();
     } catch {
@@ -80,6 +92,8 @@ export async function POST(request: Request) {
     }
 
     const { topic, difficulty } = body;
+    const langKey = body.language && LANGUAGE_LABEL[body.language] ? body.language : "python";
+    const language = LANGUAGE_LABEL[langKey];
     if (!topic || typeof topic !== "string" || !topic.trim()) {
       return NextResponse.json({ error: "주제(topic)를 입력하세요." }, { status: 400 });
     }
@@ -90,7 +104,7 @@ export async function POST(request: Request) {
         { role: "system", content: PROBLEM_GENERATION_PROMPT },
         {
           role: "user",
-          content: `주제: ${topic.trim()}\n난이도: ${difficulty ?? "easy"}\n\n위 주제와 난이도에 맞는 Python 프로그래밍 문제를 생성해주세요.`,
+          content: `언어: ${language}\n주제: ${topic.trim()}\n난이도: ${difficulty ?? "easy"}\n\n위 언어·주제·난이도에 맞는 ${language} 시험 문제를 생성해주세요. solution_code도 반드시 ${language}로 작성하세요.`,
         },
       ],
       temperature: 0.7,

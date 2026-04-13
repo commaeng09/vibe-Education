@@ -14,6 +14,18 @@ interface TestCase {
   expected_output: string;
 }
 
+const AI_LANGUAGES = [
+  { value: "python", label: "Python" },
+  { value: "javascript", label: "JavaScript" },
+  { value: "typescript", label: "TypeScript" },
+  { value: "java", label: "Java" },
+  { value: "c", label: "C" },
+  { value: "cpp", label: "C++" },
+  { value: "php", label: "PHP" },
+  { value: "html_css", label: "HTML/CSS" },
+  { value: "react", label: "React" },
+];
+
 export default function CreateProblemPage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -26,6 +38,7 @@ export default function CreateProblemPage() {
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [aiTopic, setAiTopic] = useState("");
+  const [aiLanguage, setAiLanguage] = useState<string>("python");
 
   const addTestCase = () => {
     setTestCases([...testCases, { input: "", expected_output: "" }]);
@@ -52,7 +65,7 @@ export default function CreateProblemPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
-          body: JSON.stringify({ topic: aiTopic, difficulty }),
+          body: JSON.stringify({ topic: aiTopic, difficulty, language: aiLanguage }),
         }
       );
 
@@ -183,6 +196,12 @@ export default function CreateProblemPage() {
               className="flex-1"
             />
             <Select
+              value={aiLanguage}
+              onChange={(e) => setAiLanguage(e.target.value)}
+              options={AI_LANGUAGES}
+              className="w-36"
+            />
+            <Select
               value={difficulty}
               onChange={(e) => setDifficulty(e.target.value)}
               options={[
@@ -202,7 +221,7 @@ export default function CreateProblemPage() {
             </Button>
           </div>
           <p className="text-xs text-muted mt-2">
-            주제와 난이도를 선택하면 AI가 자동으로 문제, 정답 코드, 테스트 케이스를 생성합니다.
+            언어·주제·난이도를 선택하면 AI가 자동으로 문제, 정답 코드, 테스트 케이스를 생성합니다.
           </p>
         </CardContent>
       </Card>
