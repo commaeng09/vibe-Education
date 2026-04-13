@@ -151,7 +151,7 @@ export default function HomePage() {
       const supabase = createClient();
       const email =
         kind === "student" ? testEmails.student : testEmails.instructor;
-      const { error: signError } = await supabase.auth.signInWithPassword({
+      const { data: signData, error: signError } = await supabase.auth.signInWithPassword({
         email,
         password: TEST_LOGIN_PASSWORD,
         options:
@@ -164,6 +164,41 @@ export default function HomePage() {
         if (turnstileSiteKey) resetTurnstile();
         setLoading(false);
         return;
+      }
+
+      const signedInUser = signData.user;
+      if (signedInUser?.id && signedInUser.email) {
+        const expectedRole: UserRole = kind === "instructor" ? "instructor" : "student";
+        const { data: existingProfile } = await supabase
+          .from("users")
+          .select("id, role")
+          .eq("id", signedInUser.id)
+          .maybeSingle();
+
+        if (!existingProfile) {
+          const defaultName = signedInUser.email.split("@")[0] || "user";
+          const { error: insertProfileError } = await supabase.from("users").insert({
+            id: signedInUser.id,
+            email: signedInUser.email,
+            name: defaultName,
+            role: expectedRole,
+          });
+          if (insertProfileError) {
+            setError(`프로필 동기화 실패: ${insertProfileError.message}`);
+            setLoading(false);
+            return;
+          }
+        } else if (existingProfile.role !== expectedRole) {
+          const { error: updateRoleError } = await supabase
+            .from("users")
+            .update({ role: expectedRole })
+            .eq("id", signedInUser.id);
+          if (updateRoleError) {
+            setError(`권한 동기화 실패: ${updateRoleError.message}`);
+            setLoading(false);
+            return;
+          }
+        }
       }
       router.push("/dashboard");
       router.refresh();
