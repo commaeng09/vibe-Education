@@ -221,6 +221,25 @@ export default function AnalysisPage() {
         </CardContent>
       </Card>
 
+      {problem?.solution_code && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Code2 className="w-5 h-5" />
+              정답 코드
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CodeEditor
+              value={problem.solution_code}
+              onChange={() => {}}
+              readOnly
+              height="300px"
+            />
+          </CardContent>
+        </Card>
+      )}
+
       {submission.explanation && (
         <Card>
           <CardHeader>
