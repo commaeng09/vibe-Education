@@ -23,7 +23,13 @@ export default async function DashboardPage() {
   let profileName = "사용자";
   let isInstructor = false;
   let recentProblems: { id: string; title: string; difficulty: string; created_at: string }[] = [];
-  let submissions: { id: string; result: string; created_at: string; problems?: { title: string } }[] = [];
+  let submissions: {
+    id: string;
+    result: string;
+    created_at: string;
+    problems?: { title: string };
+    users?: { name: string; email: string };
+  }[] = [];
   let totalProblems = 0;
   let totalSubmissions = 0;
   let correctSubmissions = 0;
@@ -73,7 +79,7 @@ export default async function DashboardPage() {
     const { data: subs } = isInstructor
       ? await supabase
           .from("submissions")
-          .select("*, problems(title)")
+          .select("*, problems(title), users(name, email)")
           .order("created_at", { ascending: false })
           .limit(10)
       : await supabase
@@ -225,6 +231,11 @@ export default async function DashboardPage() {
                       <p className="text-sm font-medium">
                         {sub.problems?.title || "문제"}
                       </p>
+                      {isInstructor && sub.users?.name && (
+                        <p className="text-xs text-muted">
+                          제출자: {sub.users.name} ({sub.users.email})
+                        </p>
+                      )}
                       <p className="text-xs text-muted">
                         {new Date(sub.created_at).toLocaleDateString("ko-KR")}
                       </p>

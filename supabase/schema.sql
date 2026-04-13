@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS public.submissions (
   code TEXT NOT NULL,
   explanation TEXT DEFAULT '',
   result TEXT NOT NULL CHECK (result IN ('pending', 'correct', 'incorrect')) DEFAULT 'pending',
+  instructor_comment TEXT,
+  instructor_comment_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  instructor_commented_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

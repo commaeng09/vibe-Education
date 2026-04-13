@@ -15,9 +15,10 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/input";
 import { CodeEditor } from "@/components/code-editor";
 import { DEMO_SUBMISSIONS, DEMO_ANALYSIS, DEMO_PROBLEMS } from "@/lib/demo-data";
-import type { Analysis, Submission, Problem } from "@/types/database";
+import type { Analysis, Submission, Problem, UserRole } from "@/types/database";
 
 function isDemo() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -30,6 +31,12 @@ export default function AnalysisPage() {
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
+  const [studentName, setStudentName] = useState<string>("");
+  const [studentEmail, setStudentEmail] = useState<string>("");
+  const [myRole, setMyRole] = useState<UserRole>("student");
+  const [commentText, setCommentText] = useState("");
+  const [savingComment, setSavingComment] = useState(false);
+  const [commentMessage, setCommentMessage] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -38,6 +45,8 @@ export default function AnalysisPage() {
         const sub = DEMO_SUBMISSIONS.find((s) => s.id === params.submissionId);
         if (sub) {
           setSubmission(sub);
+          setStudentName("데모 학생");
+          setStudentEmail("student@demo.com");
           const prob = DEMO_PROBLEMS.find((p) => p.id === sub.problem_id);
           if (prob) setProblem(prob);
           if (sub.id === DEMO_ANALYSIS.submission_id) {
@@ -51,6 +60,20 @@ export default function AnalysisPage() {
       const { createClient } = await import("@/lib/supabase-browser");
       const supabase = createClient();
 
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      if (authUser?.id) {
+        const { data: myProfile } = await supabase
+          .from("users")
+          .select("role")
+          .eq("id", authUser.id)
+          .single();
+        if (myProfile?.role === "instructor" || myProfile?.role === "student") {
+          setMyRole(myProfile.role);
+        }
+      }
+
       const { data: sub } = await supabase
         .from("submissions")
         .select("*")
@@ -59,6 +82,17 @@ export default function AnalysisPage() {
 
       if (sub) {
         setSubmission(sub as unknown as Submission);
+        setCommentText((sub as Submission).instructor_comment || "");
+
+        const { data: studentProfile } = await supabase
+          .from("users")
+          .select("name, email")
+          .eq("id", sub.user_id)
+          .single();
+        if (studentProfile) {
+          setStudentName(studentProfile.name || "");
+          setStudentEmail(studentProfile.email || "");
+        }
 
         const { data: prob } = await supabase
           .from("problems")
@@ -80,6 +114,40 @@ export default function AnalysisPage() {
 
     fetchData();
   }, [params.submissionId, demo]);
+
+  const handleSaveComment = async () => {
+    if (!submission) return;
+    const content = commentText.trim();
+    if (!content) {
+      setCommentMessage("코멘트를 입력해 주세요.");
+      return;
+    }
+    setSavingComment(true);
+    setCommentMessage("");
+    try {
+      const res = await fetch(`/api/submissions/${submission.id}/instructor-comment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: content }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setCommentMessage(data.error || "코멘트 저장에 실패했습니다.");
+        setSavingComment(false);
+        return;
+      }
+      setSubmission({
+        ...submission,
+        instructor_comment: content,
+        instructor_commented_at: new Date().toISOString(),
+      });
+      setCommentMessage("코멘트를 저장했습니다.");
+    } catch {
+      setCommentMessage("코멘트 저장 중 오류가 발생했습니다.");
+    } finally {
+      setSavingComment(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -131,6 +199,12 @@ export default function AnalysisPage() {
         <div>
           <h1 className="text-2xl font-bold">AI 분석 결과</h1>
           {problem && <p className="text-muted mt-1">문제: {problem.title}</p>}
+          {studentName && (
+            <p className="text-sm text-muted mt-1">
+              제출 학생: {studentName}
+              {studentEmail ? ` (${studentEmail})` : ""}
+            </p>
+          )}
         </div>
         <Badge
           variant={
@@ -251,6 +325,41 @@ export default function AnalysisPage() {
           <CardContent>
             <p className="text-sm leading-relaxed bg-secondary p-4 rounded-lg">
               {submission.explanation}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {myRole === "instructor" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">강사 코멘트</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Textarea
+              placeholder="학생에게 남길 코멘트를 입력하세요..."
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              className="min-h-[120px]"
+            />
+            {commentMessage && (
+              <p className="text-xs text-muted">{commentMessage}</p>
+            )}
+            <Button onClick={handleSaveComment} loading={savingComment}>
+              코멘트 저장
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {myRole !== "instructor" && submission.instructor_comment && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">강사 코멘트</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap bg-secondary p-4 rounded-lg">
+              {submission.instructor_comment}
             </p>
           </CardContent>
         </Card>

@@ -31,6 +31,9 @@ export interface Submission {
   code: string;
   explanation: string;
   result: "pending" | "correct" | "incorrect";
+  instructor_comment?: string | null;
+  instructor_comment_by?: string | null;
+  instructor_commented_at?: string | null;
   created_at: string;
 }
 
