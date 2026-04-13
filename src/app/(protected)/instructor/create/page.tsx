@@ -71,6 +71,9 @@ export default function CreateProblemPage() {
     },
   ]);
   const [aiLanguage, setAiLanguage] = useState<string>("python");
+  const [newExamQuestionType, setNewExamQuestionType] = useState<"coding" | "mcq">("coding");
+  const [aiRequirement, setAiRequirement] = useState("");
+  const [aiExample, setAiExample] = useState("");
 
   const addTestCase = () => {
     setTestCases([...testCases, { input: "", expected_output: "" }]);
@@ -97,7 +100,23 @@ export default function CreateProblemPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
-          body: JSON.stringify({ topic: aiTopic, difficulty, language: aiLanguage }),
+          body: JSON.stringify({
+            topic: aiTopic,
+            difficulty,
+            language: aiLanguage,
+            mode: createMode,
+            singleType,
+            requirement: aiRequirement,
+            example: aiExample,
+            currentDraft: {
+              title,
+              description,
+              testCases,
+              mcqOptions,
+              mcqCorrectIndex,
+              examQuestions,
+            },
+          }),
         }
       );
 
@@ -225,7 +244,7 @@ export default function CreateProblemPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in max-w-4xl mx-auto">
+    <div className="space-y-6 animate-fade-in max-w-6xl mx-auto">
       <Link
         href="/dashboard"
         className="inline-flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors"
@@ -301,6 +320,22 @@ export default function CreateProblemPage() {
               <Sparkles className="w-4 h-4 mr-2" />
               AI 생성
             </Button>
+          </div>
+          <div className="grid md:grid-cols-2 gap-3 mt-3">
+            <Textarea
+              label="AI 참고 조건 (선택)"
+              placeholder="예: OOP 문법 포함, 난이도는 기초~중급, 배열/반복문 중심"
+              value={aiRequirement}
+              onChange={(e) => setAiRequirement(e.target.value)}
+              className="min-h-[90px]"
+            />
+            <Textarea
+              label="예시 문제/스타일 (선택)"
+              placeholder="예: '두 정수 합' 스타일처럼 입출력 예시를 2개 넣어주세요."
+              value={aiExample}
+              onChange={(e) => setAiExample(e.target.value)}
+              className="min-h-[90px]"
+            />
           </div>
           <p className="text-xs text-muted mt-2">
             언어·주제·난이도를 선택하면 AI가 자동으로 문제, 정답 코드, 테스트 케이스를 생성합니다.
@@ -430,26 +465,39 @@ export default function CreateProblemPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>시험 문제 구성 (Google Form 스타일)</CardTitle>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() =>
-                  setExamQuestions([
-                    ...examQuestions,
-                    {
-                      type: "coding",
-                      title: "",
-                      description: "",
-                      options: [{ text: "" }, { text: "" }, { text: "" }, { text: "" }],
-                      correctIndex: 0,
-                      answer: "",
-                    },
-                  ])
-                }
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                문항 추가
-              </Button>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={newExamQuestionType}
+                  onChange={(e) =>
+                    setNewExamQuestionType(e.target.value as "coding" | "mcq")
+                  }
+                  options={[
+                    { value: "coding", label: "주관식" },
+                    { value: "mcq", label: "객관식" },
+                  ]}
+                  className="w-32"
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() =>
+                    setExamQuestions([
+                      ...examQuestions,
+                      {
+                        type: newExamQuestionType,
+                        title: "",
+                        description: "",
+                        options: [{ text: "" }, { text: "" }, { text: "" }, { text: "" }],
+                        correctIndex: 0,
+                        answer: "",
+                      },
+                    ])
+                  }
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  문항 추가
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">

@@ -84,7 +84,16 @@ export async function POST(request: Request) {
       );
     }
 
-    let body: { topic?: string; difficulty?: string; language?: string };
+    let body: {
+      topic?: string;
+      difficulty?: string;
+      language?: string;
+      mode?: "single" | "exam";
+      singleType?: "coding" | "mcq";
+      requirement?: string;
+      example?: string;
+      currentDraft?: unknown;
+    };
     try {
       body = await request.json();
     } catch {
@@ -94,6 +103,8 @@ export async function POST(request: Request) {
     const { topic, difficulty } = body;
     const langKey = body.language && LANGUAGE_LABEL[body.language] ? body.language : "python";
     const language = LANGUAGE_LABEL[langKey];
+    const mode = body.mode === "exam" ? "exam" : "single";
+    const singleType = body.singleType === "mcq" ? "mcq" : "coding";
     if (!topic || typeof topic !== "string" || !topic.trim()) {
       return NextResponse.json({ error: "주제(topic)를 입력하세요." }, { status: 400 });
     }
@@ -104,7 +115,18 @@ export async function POST(request: Request) {
         { role: "system", content: PROBLEM_GENERATION_PROMPT },
         {
           role: "user",
-          content: `언어: ${language}\n주제: ${topic.trim()}\n난이도: ${difficulty ?? "easy"}\n\n위 언어·주제·난이도에 맞는 ${language} 시험 문제를 생성해주세요. solution_code도 반드시 ${language}로 작성하세요.`,
+          content: `언어: ${language}
+주제: ${topic.trim()}
+난이도: ${difficulty ?? "easy"}
+생성 모드: ${mode === "exam" ? "시험 문제(다문항)" : singleType === "mcq" ? "단일 객관식(4지선다)" : "단일 코드 문제(주관식)"}
+추가 요구사항: ${body.requirement?.trim() || "없음"}
+참고 예시: ${body.example?.trim() || "없음"}
+현재 작성 중인 초안(JSON): ${JSON.stringify(body.currentDraft || {}, null, 2)}
+
+위 정보를 우선 반영해서 문제를 생성하세요.
+- mode가 단일 객관식이면 description에 보기/정답 힌트를 포함하고, solution_code에는 정답 해설을 작성하세요.
+- mode가 단일 코드 문제면 solution_code를 반드시 ${language}로 작성하세요.
+- mode가 시험 문제면 description에 문항 번호를 나눠 작성하고, test_cases는 대표 케이스만 요약해서 넣으세요.`,
         },
       ],
       temperature: 0.7,
