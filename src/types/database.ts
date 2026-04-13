@@ -13,6 +13,8 @@ export interface Problem {
   title: string;
   description: string;
   difficulty: "easy" | "medium" | "hard";
+  problem_type?: "coding_single" | "mcq_single" | "exam";
+  question_payload?: unknown;
   solution_code: string;
   test_cases: TestCase[];
   created_by: string;

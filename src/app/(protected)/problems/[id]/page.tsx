@@ -23,6 +23,8 @@ export default function ProblemDetailPage() {
   const demo = isDemo();
   const [problem, setProblem] = useState<Problem | null>(null);
   const [code, setCode] = useState("# 여기에 코드를 작성하세요\n\n");
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [examAnswers, setExamAnswers] = useState<Array<{ selectedIndex?: number; text?: string }>>([]);
   const [explanation, setExplanation] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -76,6 +78,12 @@ export default function ProblemDetailPage() {
           problem_id: problem.id,
           code,
           explanation,
+          answer_payload:
+            (problem.problem_type || "coding_single") === "mcq_single"
+              ? { selectedIndex }
+              : (problem.problem_type || "coding_single") === "exam"
+                ? { answers: examAnswers }
+                : undefined,
         }),
       });
 
@@ -137,6 +145,18 @@ export default function ProblemDetailPage() {
     );
   }
 
+  const problemType = problem.problem_type || "coding_single";
+  const payload = (problem.question_payload || {}) as {
+    type?: string;
+    options?: string[];
+    questions?: Array<{
+      type?: "coding" | "mcq";
+      title?: string;
+      description?: string;
+      options?: string[];
+    }>;
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <Link
@@ -189,19 +209,87 @@ export default function ProblemDetailPage() {
         </div>
 
         <div className="space-y-4">
-          <Card className="p-0 overflow-hidden">
-            <CodeEditor value={code} onChange={setCode} />
-          </Card>
+          {problemType === "coding_single" && (
+            <>
+              <Card className="p-0 overflow-hidden">
+                <CodeEditor value={code} onChange={setCode} />
+              </Card>
 
-          <Card>
-            <Textarea
-              label="풀이 설명"
-              placeholder="코드를 작성하면서 어떻게 생각했는지, 접근 방식을 설명해주세요..."
-              value={explanation}
-              onChange={(e) => setExplanation(e.target.value)}
-              className="min-h-[120px]"
-            />
-          </Card>
+              <Card>
+                <Textarea
+                  label="풀이 설명"
+                  placeholder="코드를 작성하면서 어떻게 생각했는지, 접근 방식을 설명해주세요..."
+                  value={explanation}
+                  onChange={(e) => setExplanation(e.target.value)}
+                  className="min-h-[120px]"
+                />
+              </Card>
+            </>
+          )}
+
+          {problemType === "mcq_single" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">객관식 답안</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {(payload.options || []).map((opt, idx) => (
+                  <label key={idx} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      checked={selectedIndex === idx}
+                      onChange={() => setSelectedIndex(idx)}
+                    />
+                    <span>{idx + 1}. {opt}</span>
+                  </label>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {problemType === "exam" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">시험 답안</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {(payload.questions || []).map((q, idx) => (
+                  <div key={idx} className="border border-border rounded-lg p-3 space-y-2">
+                    <p className="font-medium">{idx + 1}. {q.title || "문항"}</p>
+                    {q.description && <p className="text-sm text-muted whitespace-pre-wrap">{q.description}</p>}
+                    {q.type === "mcq" ? (
+                      <div className="space-y-1">
+                        {(q.options || []).map((opt, oi) => (
+                          <label key={oi} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="radio"
+                              checked={examAnswers[idx]?.selectedIndex === oi}
+                              onChange={() => {
+                                const next = [...examAnswers];
+                                next[idx] = { ...next[idx], selectedIndex: oi };
+                                setExamAnswers(next);
+                              }}
+                            />
+                            <span>{oi + 1}. {opt}</span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <Textarea
+                        placeholder="주관식 답안을 입력하세요"
+                        value={examAnswers[idx]?.text || ""}
+                        onChange={(e) => {
+                          const next = [...examAnswers];
+                          next[idx] = { ...next[idx], text: e.target.value };
+                          setExamAnswers(next);
+                        }}
+                      />
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           <div className="flex gap-3">
             <Button
@@ -210,10 +298,16 @@ export default function ProblemDetailPage() {
               className="flex-1"
               loading={submitting}
               onClick={handleSubmit}
-              disabled={!code.trim()}
+              disabled={
+                problemType === "coding_single"
+                  ? !code.trim()
+                  : problemType === "mcq_single"
+                    ? selectedIndex === null
+                    : false
+              }
             >
               <Send className="w-4 h-4 mr-2" />
-              제출 및 AI 분석
+              {problemType === "coding_single" ? "제출 및 AI 분석" : "제출하기"}
             </Button>
           </div>
 

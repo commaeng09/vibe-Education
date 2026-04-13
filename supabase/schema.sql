@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS public.problems (
   title TEXT NOT NULL,
   description TEXT NOT NULL,
   difficulty TEXT NOT NULL CHECK (difficulty IN ('easy', 'medium', 'hard')) DEFAULT 'easy',
+  problem_type TEXT NOT NULL CHECK (problem_type IN ('coding_single', 'mcq_single', 'exam')) DEFAULT 'coding_single',
+  question_payload JSONB DEFAULT '{}'::jsonb,
   solution_code TEXT DEFAULT '',
   test_cases JSONB DEFAULT '[]'::jsonb,
   created_by UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,

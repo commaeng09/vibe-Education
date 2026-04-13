@@ -5,6 +5,8 @@ import { getOpenAI, ANALYSIS_SYSTEM_PROMPT } from "@/lib/openai";
 
 export const runtime = "nodejs";
 
+type ProblemType = "coding_single" | "mcq_single" | "exam";
+
 /** DB INTEGER + CHECK(0..100) — 모델이 문자열·실수를 주면 INSERT가 실패할 수 있음 */
 function normalizeScore(value: unknown): number {
   const n = typeof value === "number" ? value : Number(value);
@@ -17,6 +19,78 @@ function safeText(value: unknown, fallback = ""): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return fallback;
+}
+
+function parseProblemType(problem: Record<string, unknown>): ProblemType {
+  const t = problem.problem_type;
+  if (t === "mcq_single" || t === "exam" || t === "coding_single") return t;
+  return "coding_single";
+}
+
+function gradeNonCoding(
+  problemType: ProblemType,
+  payload: unknown,
+  answerPayload: unknown
+): { score: number; feedback: string; answerSummary: string } {
+  if (problemType === "mcq_single") {
+    const p = (payload || {}) as { options?: string[]; correctIndex?: number };
+    const a = (answerPayload || {}) as { selectedIndex?: number };
+    const isCorrect = typeof a.selectedIndex === "number" && a.selectedIndex === p.correctIndex;
+    const score = isCorrect ? 100 : 0;
+    return {
+      score,
+      feedback: isCorrect ? "정답입니다." : "오답입니다. 선택지를 다시 검토해 보세요.",
+      answerSummary:
+        typeof a.selectedIndex === "number"
+          ? `객관식 선택: ${a.selectedIndex + 1}번`
+          : "객관식 선택: 미응답",
+    };
+  }
+
+  if (problemType === "exam") {
+    const p = (payload || {}) as {
+      questions?: Array<{ type?: string; correctIndex?: number; answer?: string }>;
+    };
+    const a = (answerPayload || {}) as {
+      answers?: Array<{ selectedIndex?: number; text?: string }>;
+    };
+    const questions = Array.isArray(p.questions) ? p.questions : [];
+    const answers = Array.isArray(a.answers) ? a.answers : [];
+    if (!questions.length) {
+      return { score: 0, feedback: "시험 문제 구성이 비어 있습니다.", answerSummary: "응답 없음" };
+    }
+    let correct = 0;
+    const lines: string[] = [];
+    questions.forEach((q, i) => {
+      const ans = answers[i] || {};
+      if (q.type === "mcq") {
+        const ok =
+          typeof q.correctIndex === "number" &&
+          typeof ans.selectedIndex === "number" &&
+          q.correctIndex === ans.selectedIndex;
+        if (ok) correct += 1;
+        lines.push(`${i + 1}. 객관식: ${typeof ans.selectedIndex === "number" ? `${ans.selectedIndex + 1}번` : "미응답"}`);
+      } else {
+        const expected = (q.answer || "").trim().toLowerCase();
+        const actual = (ans.text || "").trim().toLowerCase();
+        const ok = !!expected && !!actual && expected === actual;
+        if (ok) correct += 1;
+        lines.push(`${i + 1}. 주관식: ${ans.text?.trim() ? "응답 완료" : "미응답"}`);
+      }
+    });
+    const score = Math.round((correct / questions.length) * 100);
+    return {
+      score,
+      feedback: `총 ${questions.length}문항 중 ${correct}문항 정답입니다.`,
+      answerSummary: lines.join("\n"),
+    };
+  }
+
+  return {
+    score: 0,
+    feedback: "지원하지 않는 문제 유형입니다.",
+    answerSummary: "응답 없음",
+  };
 }
 
 export async function POST(request: Request) {
@@ -35,17 +109,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: ensured.message }, { status: 500 });
     }
 
-    let body: { problem_id?: string; code?: string; explanation?: string };
+    let body: {
+      problem_id?: string;
+      code?: string;
+      explanation?: string;
+      answer_payload?: unknown;
+    };
     try {
       body = await request.json();
     } catch {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const { problem_id, code, explanation } = body;
-    if (!problem_id || typeof code !== "string") {
+    const { problem_id, code, explanation, answer_payload } = body;
+    if (!problem_id) {
       return NextResponse.json(
-        { error: "problem_id와 code가 필요합니다." },
+        { error: "problem_id가 필요합니다." },
         { status: 400 }
       );
     }
@@ -63,13 +142,25 @@ export async function POST(request: Request) {
       );
     }
 
+    const problemType = parseProblemType(problem as Record<string, unknown>);
+    const serializedAnswer =
+      problemType === "coding_single"
+        ? (typeof code === "string" ? code : "")
+        : JSON.stringify(answer_payload || {});
+    const explanationText =
+      problemType === "coding_single" ? explanation ?? "" : "비코딩 문항 제출";
+
+    if (problemType === "coding_single" && !serializedAnswer.trim()) {
+      return NextResponse.json({ error: "코드를 입력하세요." }, { status: 400 });
+    }
+
     const { data: submission, error: subError } = await supabase
       .from("submissions")
       .insert({
         user_id: user.id,
         problem_id,
-        code,
-        explanation: explanation ?? "",
+        code: serializedAnswer,
+        explanation: explanationText,
         result: "pending",
       })
       .select()
@@ -82,6 +173,34 @@ export async function POST(request: Request) {
       );
     }
 
+    if (problemType !== "coding_single") {
+      const { score, feedback, answerSummary } = gradeNonCoding(
+        problemType,
+        (problem as Record<string, unknown>).question_payload,
+        answer_payload
+      );
+      const judged = score >= 70 ? "correct" : "incorrect";
+      await supabase.from("submissions").update({ result: judged }).eq("id", submission.id);
+      const { data: analysis, error: analysisError } = await supabase
+        .from("analysis")
+        .insert({
+          submission_id: submission.id,
+          error_type: judged === "correct" ? "없음" : "오답",
+          thinking_pattern: answerSummary,
+          feedback,
+          score,
+        })
+        .select()
+        .single();
+      if (analysisError) {
+        return NextResponse.json({ error: analysisError.message }, { status: 500 });
+      }
+      return NextResponse.json({
+        submission: { ...submission, result: judged },
+        analysis,
+      });
+    }
+
     try {
       const analysisPrompt = `
 문제: ${problem.title}
@@ -91,7 +210,7 @@ export async function POST(request: Request) {
 
 학생 코드:
 \`\`\`
-${code}
+${serializedAnswer}
 \`\`\`
 
 학생의 풀이 설명: ${explanation || "제공되지 않음"}

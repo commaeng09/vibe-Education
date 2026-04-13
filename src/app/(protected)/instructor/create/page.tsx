@@ -14,6 +14,19 @@ interface TestCase {
   expected_output: string;
 }
 
+interface McqOption {
+  text: string;
+}
+
+interface ExamQuestion {
+  type: "coding" | "mcq";
+  title: string;
+  description: string;
+  options: McqOption[];
+  correctIndex: number;
+  answer: string;
+}
+
 const AI_LANGUAGES = [
   { value: "python", label: "Python" },
   { value: "javascript", label: "JavaScript" },
@@ -28,6 +41,8 @@ const AI_LANGUAGES = [
 
 export default function CreateProblemPage() {
   const router = useRouter();
+  const [createMode, setCreateMode] = useState<"single" | "exam">("single");
+  const [singleType, setSingleType] = useState<"coding" | "mcq">("coding");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [difficulty, setDifficulty] = useState<string>("easy");
@@ -38,6 +53,23 @@ export default function CreateProblemPage() {
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [aiTopic, setAiTopic] = useState("");
+  const [mcqOptions, setMcqOptions] = useState<McqOption[]>([
+    { text: "" },
+    { text: "" },
+    { text: "" },
+    { text: "" },
+  ]);
+  const [mcqCorrectIndex, setMcqCorrectIndex] = useState(0);
+  const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([
+    {
+      type: "coding",
+      title: "",
+      description: "",
+      options: [{ text: "" }, { text: "" }, { text: "" }, { text: "" }],
+      correctIndex: 0,
+      answer: "",
+    },
+  ]);
   const [aiLanguage, setAiLanguage] = useState<string>("python");
 
   const addTestCase = () => {
@@ -143,12 +175,42 @@ export default function CreateProblemPage() {
       return;
     }
 
+    const payload =
+      createMode === "single" && singleType === "mcq"
+        ? {
+            type: "mcq",
+            options: mcqOptions.map((o) => o.text),
+            correctIndex: mcqCorrectIndex,
+          }
+        : createMode === "exam"
+          ? {
+              questions: examQuestions.map((q) => ({
+                type: q.type,
+                title: q.title,
+                description: q.description,
+                options: q.options.map((o) => o.text),
+                correctIndex: q.correctIndex,
+                answer: q.answer,
+              })),
+            }
+          : {};
+
     const { error } = await supabase.from("problems").insert({
       title,
       description,
       difficulty,
-      solution_code: solutionCode,
-      test_cases: testCases.filter((tc) => tc.input || tc.expected_output),
+      problem_type:
+        createMode === "exam"
+          ? "exam"
+          : singleType === "mcq"
+            ? "mcq_single"
+            : "coding_single",
+      question_payload: payload,
+      solution_code: singleType === "coding" ? solutionCode : "",
+      test_cases:
+        singleType === "coding"
+          ? testCases.filter((tc) => tc.input || tc.expected_output)
+          : [],
       created_by: user.id,
     });
 
@@ -189,6 +251,26 @@ export default function CreateProblemPage() {
         </CardHeader>
         <CardContent>
           <div className="flex gap-3">
+            <Select
+              value={createMode}
+              onChange={(e) => setCreateMode(e.target.value as "single" | "exam")}
+              options={[
+                { value: "single", label: "단일 문제" },
+                { value: "exam", label: "시험 문제(다문항)" },
+              ]}
+              className="w-48"
+            />
+            {createMode === "single" && (
+              <Select
+                value={singleType}
+                onChange={(e) => setSingleType(e.target.value as "coding" | "mcq")}
+                options={[
+                  { value: "coding", label: "코드 문제(주관식)" },
+                  { value: "mcq", label: "객관식(4지선다)" },
+                ]}
+                className="w-44"
+              />
+            )}
             <Input
               placeholder="예: 이진 탐색, 재귀 함수, 정렬 알고리즘..."
               value={aiTopic}
@@ -260,58 +342,204 @@ export default function CreateProblemPage() {
         </CardContent>
       </Card>
 
-      {/* Solution Code */}
-      <Card>
-        <CardHeader>
-          <CardTitle>정답 코드</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <CodeEditor value={solutionCode} onChange={setSolutionCode} height="300px" />
-        </CardContent>
-      </Card>
+      {createMode === "single" && singleType === "coding" && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>정답 코드</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CodeEditor value={solutionCode} onChange={setSolutionCode} height="300px" />
+            </CardContent>
+          </Card>
 
-      {/* Test Cases */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>테스트 케이스</CardTitle>
-            <Button variant="secondary" size="sm" onClick={addTestCase}>
-              <Plus className="w-4 h-4 mr-1" />
-              추가
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {testCases.map((tc, idx) => (
-            <div key={idx} className="flex gap-3 items-start">
-              <div className="flex-1 grid grid-cols-2 gap-3">
-                <Input
-                  placeholder="입력값"
-                  value={tc.input}
-                  onChange={(e) => updateTestCase(idx, "input", e.target.value)}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>테스트 케이스</CardTitle>
+                <Button variant="secondary" size="sm" onClick={addTestCase}>
+                  <Plus className="w-4 h-4 mr-1" />
+                  추가
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {testCases.map((tc, idx) => (
+                <div key={idx} className="flex gap-3 items-start">
+                  <div className="flex-1 grid grid-cols-2 gap-3">
+                    <Input
+                      placeholder="입력값"
+                      value={tc.input}
+                      onChange={(e) => updateTestCase(idx, "input", e.target.value)}
+                    />
+                    <Input
+                      placeholder="기대 출력값"
+                      value={tc.expected_output}
+                      onChange={(e) =>
+                        updateTestCase(idx, "expected_output", e.target.value)
+                      }
+                    />
+                  </div>
+                  {testCases.length > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeTestCase(idx)}
+                      className="mt-1"
+                    >
+                      <X className="w-4 h-4 text-danger" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {createMode === "single" && singleType === "mcq" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>객관식 설정 (4지선다)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {mcqOptions.map((opt, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  checked={mcqCorrectIndex === idx}
+                  onChange={() => setMcqCorrectIndex(idx)}
                 />
                 <Input
-                  placeholder="기대 출력값"
-                  value={tc.expected_output}
-                  onChange={(e) =>
-                    updateTestCase(idx, "expected_output", e.target.value)
-                  }
+                  placeholder={`${idx + 1}번 선택지`}
+                  value={opt.text}
+                  onChange={(e) => {
+                    const next = [...mcqOptions];
+                    next[idx].text = e.target.value;
+                    setMcqOptions(next);
+                  }}
                 />
               </div>
-              {testCases.length > 1 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeTestCase(idx)}
-                  className="mt-1"
-                >
-                  <X className="w-4 h-4 text-danger" />
-                </Button>
-              )}
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {createMode === "exam" && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>시험 문제 구성 (Google Form 스타일)</CardTitle>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  setExamQuestions([
+                    ...examQuestions,
+                    {
+                      type: "coding",
+                      title: "",
+                      description: "",
+                      options: [{ text: "" }, { text: "" }, { text: "" }, { text: "" }],
+                      correctIndex: 0,
+                      answer: "",
+                    },
+                  ])
+                }
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                문항 추가
+              </Button>
             </div>
-          ))}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {examQuestions.map((q, idx) => (
+              <div key={idx} className="rounded-lg border border-border p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">문항 {idx + 1}</p>
+                  {examQuestions.length > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setExamQuestions(examQuestions.filter((_, i) => i !== idx))
+                      }
+                    >
+                      <X className="w-4 h-4 text-danger" />
+                    </Button>
+                  )}
+                </div>
+                <Select
+                  value={q.type}
+                  onChange={(e) => {
+                    const next = [...examQuestions];
+                    next[idx].type = e.target.value as "coding" | "mcq";
+                    setExamQuestions(next);
+                  }}
+                  options={[
+                    { value: "coding", label: "주관식" },
+                    { value: "mcq", label: "객관식(4지선다)" },
+                  ]}
+                />
+                <Input
+                  placeholder="문항 제목"
+                  value={q.title}
+                  onChange={(e) => {
+                    const next = [...examQuestions];
+                    next[idx].title = e.target.value;
+                    setExamQuestions(next);
+                  }}
+                />
+                <Textarea
+                  placeholder="문항 설명"
+                  value={q.description}
+                  onChange={(e) => {
+                    const next = [...examQuestions];
+                    next[idx].description = e.target.value;
+                    setExamQuestions(next);
+                  }}
+                />
+                {q.type === "mcq" ? (
+                  <div className="space-y-2">
+                    {q.options.map((o, oi) => (
+                      <div key={oi} className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          checked={q.correctIndex === oi}
+                          onChange={() => {
+                            const next = [...examQuestions];
+                            next[idx].correctIndex = oi;
+                            setExamQuestions(next);
+                          }}
+                        />
+                        <Input
+                          placeholder={`${oi + 1}번 선택지`}
+                          value={o.text}
+                          onChange={(e) => {
+                            const next = [...examQuestions];
+                            next[idx].options[oi].text = e.target.value;
+                            setExamQuestions(next);
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Input
+                    placeholder="주관식 정답(정확 일치 채점)"
+                    value={q.answer}
+                    onChange={(e) => {
+                      const next = [...examQuestions];
+                      next[idx].answer = e.target.value;
+                      setExamQuestions(next);
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Submit */}
       <div className="flex justify-end gap-3 pb-8">
