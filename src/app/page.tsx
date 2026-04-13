@@ -409,19 +409,13 @@ export default function HomePage() {
 
           {testQuickLogin && (
             <Card className="p-6 mb-4 border-amber-200 bg-amber-50/90">
-              <h3 className="font-semibold text-sm text-amber-900 mb-1">
-                내부 테스트 로그인 (비공개)
+              <h3 className="font-semibold text-sm text-amber-900 mb-2">
+                내부 테스트 로그인
               </h3>
-              <p className="text-xs text-amber-800 mb-3">
-                이메일 인증 없이 고정 비밀번호로 들어갑니다. NEXT_PUBLIC_ENABLE_TEST_LOGIN=true
-                일 때만 보입니다. Supabase에 아래 이메일 계정을 만들고 비밀번호를{" "}
-                <span className="font-mono">{TEST_LOGIN_PASSWORD}</span> 로 맞춰
-                두세요.
-              </p>
-              <p className="text-[11px] text-amber-700 mb-3 font-mono break-all">
-                학생: {testEmails.student}
+              <p className="text-[11px] text-amber-800 mb-3 font-mono break-all">
+                {testEmails.student}
                 <br />
-                교강사: {testEmails.instructor}
+                {testEmails.instructor}
               </p>
               <div className="flex gap-2">
                 <Button
@@ -573,36 +567,6 @@ export default function HomePage() {
                 <p className="text-sm text-danger bg-red-50 p-3 rounded-lg whitespace-pre-wrap break-words">
                   {error}
                 </p>
-              )}
-
-              {!demo && (
-                <details className="text-xs text-muted-foreground border border-border rounded-lg p-3 bg-secondary/40">
-                  <summary className="cursor-pointer font-medium text-foreground">
-                    student-test@vibe-education.app 로 로그인이 안 될 때
-                  </summary>
-                  <ol className="mt-2 list-decimal list-inside space-y-1.5 pl-1">
-                    <li>
-                      이 주소는 <strong>앱에만 적힌 예시</strong>입니다. Supabase{" "}
-                      <strong>Authentication → Users</strong> 목록에{" "}
-                      <span className="font-mono">student-test@vibe-education.app</span>{" "}
-                      사용자가 <strong>실제로 있어야</strong> 로그인됩니다.
-                    </li>
-                    <li>
-                      없으면 <strong>Add user</strong>로 같은 이메일을 넣고 비밀번호(예:{" "}
-                      <span className="font-mono">qwer1234</span>)를 지정해 만듭니다.
-                    </li>
-                    <li>
-                      <strong>Providers → Email → Confirm email</strong>이 켜져 있으면
-                      인증 메일을 확인하거나, 개발 중에는 끄고 다시 시도합니다.
-                    </li>
-                    <li>
-                      Vercel(또는 로컬)의{" "}
-                      <span className="font-mono">NEXT_PUBLIC_SUPABASE_URL</span> /{" "}
-                      <span className="font-mono">ANON_KEY</span>가 그 Users가 있는
-                      Supabase 프로젝트와 같은지 확인합니다.
-                    </li>
-                  </ol>
-                </details>
               )}
 
               <Button
